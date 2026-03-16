@@ -5,11 +5,14 @@
   "main": "dist/server.js",
   "private": true,
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "dev:legacy": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "start": "node dist/server.js",
-    "seed:companies": "ts-node-dev --transpile-only scripts/seedCompanies.ts",
-    "seed:default-admin": "ts-node-dev --transpile-only scripts/ensureDefaultAdmin.ts"
+    "seed:companies": "tsx scripts/seedCompanies.ts",
+    "seed:default-admin": "tsx scripts/ensureDefaultAdmin.ts"
   },
   "keywords": [],
   "author": "MPANGA WA LUKALABA GLOIRE",
@@ -38,7 +41,11 @@
     "@types/morgan": "^1.9.10",
     "@types/node": "^25.0.3",
     "@types/pg": "^8.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^8.57.1",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
 }

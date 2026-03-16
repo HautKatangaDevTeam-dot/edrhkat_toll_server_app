@@ -8,7 +8,6 @@ import {
   findReceiptBatchByShortCode,
   verifyBatchQrPayload,
   findReceiptByLookup,
-  findReceiptByShortCode,
   getReceiptBatch,
   listBatchConsumptionEvents,
   listBatchReceipts,

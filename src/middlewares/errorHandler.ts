@@ -13,6 +13,7 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
+  void _next;
   const status = err instanceof AppError ? err.statusCode : 500;
   const message = err instanceof AppError ? err.message : 'Internal server error';
   const code = err instanceof AppError ? err.code : 'INTERNAL_ERROR';
