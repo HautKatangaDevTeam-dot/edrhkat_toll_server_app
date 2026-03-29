@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "dev:legacy": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "heroku-postbuild": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "start": "node dist/server.js",
@@ -17,6 +18,9 @@
   "keywords": [],
   "author": "MPANGA WA LUKALABA GLOIRE",
   "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -13,6 +13,15 @@ export type User = {
   updatedAt: Date;
 };
 
+export type UserRefreshSession = {
+  id: string;
+  userId: string;
+  refreshTokenHash: string;
+  clientType: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const mapRow = (row: any): User => ({
   id: row.id,
   username: row.username,
@@ -22,6 +31,15 @@ const mapRow = (row: any): User => ({
   post: row.post,
   createdAt: row.created_at,
   updatedAt: row.updated_at
+});
+
+const mapSessionRow = (row: any): UserRefreshSession => ({
+  id: row.id,
+  userId: row.user_id,
+  refreshTokenHash: row.refresh_token_hash,
+  clientType: row.client_type,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
 });
 
 export const ensureUsersTable = async (): Promise<void> => {
@@ -108,6 +126,22 @@ export const ensureUsersTable = async (): Promise<void> => {
         ALTER TABLE users DROP COLUMN email;
       END IF;
     END$$;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_refresh_sessions (
+      id UUID PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      refresh_token_hash TEXT NOT NULL,
+      client_type VARCHAR(32) NOT NULL DEFAULT 'web',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS user_refresh_sessions_user_id_idx
+    ON user_refresh_sessions(user_id);
   `);
 };
 
@@ -222,4 +256,61 @@ export const saveRefreshToken = async (id: string, refreshTokenHash: string | nu
     `,
     [id, refreshTokenHash]
   );
+};
+
+export const saveRefreshSession = async (
+  sessionId: string,
+  userId: string,
+  refreshTokenHash: string,
+  clientType: string
+): Promise<void> => {
+  await pool.query(
+    `
+      INSERT INTO user_refresh_sessions (id, user_id, refresh_token_hash, client_type)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (id)
+      DO UPDATE SET
+        refresh_token_hash = EXCLUDED.refresh_token_hash,
+        client_type = EXCLUDED.client_type,
+        updated_at = NOW();
+    `,
+    [sessionId, userId, refreshTokenHash, clientType]
+  );
+};
+
+export const findRefreshSessionById = async (
+  sessionId: string
+): Promise<UserRefreshSession | null> => {
+  const result = await pool.query(
+    `SELECT * FROM user_refresh_sessions WHERE id = $1 LIMIT 1;`,
+    [sessionId]
+  );
+  return result.rows[0] ? mapSessionRow(result.rows[0]) : null;
+};
+
+export const deleteRefreshSessionById = async (sessionId: string): Promise<void> => {
+  await pool.query(`DELETE FROM user_refresh_sessions WHERE id = $1;`, [sessionId]);
+};
+
+export const deleteAllRefreshSessionsForUser = async (userId: string): Promise<void> => {
+  await pool.query(`DELETE FROM user_refresh_sessions WHERE user_id = $1;`, [userId]);
+};
+
+export const updateUserPasswordById = async (
+  id: string,
+  passwordHash: string
+): Promise<User | null> => {
+  const result = await pool.query(
+    `
+      UPDATE users
+      SET password_hash = $2,
+          refresh_token_hash = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `,
+    [id, passwordHash]
+  );
+
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
 };

@@ -31,8 +31,10 @@ export const login = async (
   try {
     const { username, password } = req.body;
 
-    const result = await authService.login(username, password);
     const mobileClient = isMobileClient(req);
+    const result = await authService.login(username, password, {
+      mobileClient,
+    });
     if (!mobileClient) {
       setAuthCookies(res, result);
     }
@@ -78,7 +80,9 @@ export const refresh = async (
       );
     }
 
-    const result = await authService.refreshSession(refreshToken);
+    const result = await authService.refreshSession(refreshToken, {
+      mobileClient,
+    });
     if (!mobileClient) {
       setAuthCookies(res, result);
     }
@@ -155,6 +159,20 @@ export const listUsers = async (
       Number(page) || 1,
       Number(pageSize) || 10
     );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const result = await authService.resetUserPassword(id);
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);

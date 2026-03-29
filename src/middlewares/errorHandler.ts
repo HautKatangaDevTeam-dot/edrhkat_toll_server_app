@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import logger from '../config/logger';
 import AppError from '../utils/appError';
+import { captureServerIncident } from '../services/monitoring.service';
 
 export const notFound = (req: Request, _res: Response, next: NextFunction): void => {
   next(new AppError(`Route ${req.originalUrl} not found`, 404, 'ROUTE_NOT_FOUND'));
@@ -9,7 +10,7 @@ export const notFound = (req: Request, _res: Response, next: NextFunction): void
 // Centralized error handler to keep responses consistent and avoid leaking stack traces.
 export const errorHandler = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void => {
@@ -19,5 +20,8 @@ export const errorHandler = (
   const code = err instanceof AppError ? err.code : 'INTERNAL_ERROR';
 
   logger.error(message, err);
+  void captureServerIncident(req, err).catch((captureError) => {
+    logger.error('Failed to capture server incident', captureError);
+  });
   res.status(status).json({ success: false, message, code });
 };

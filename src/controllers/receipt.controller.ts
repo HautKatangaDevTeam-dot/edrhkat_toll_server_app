@@ -137,7 +137,7 @@ export const listReceipts = async (req: Request, res: Response, next: NextFuncti
 
 export const consumeReceipt = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { code, qr_payload, consumed_at, post_id, source_device_id, source_device_type, metadata } = req.body;
+    const { code, qr_payload, consumed_at, post_id, source_device_id, source_device_type, local_event_id, source, metadata } = req.body;
     const result = await receiptService.consumeReceipt({
       shortCode: code,
       qrPayload: qr_payload,
@@ -148,9 +148,35 @@ export const consumeReceipt = async (req: Request, res: Response, next: NextFunc
       postId: post_id,
       sourceDeviceId: source_device_id,
       sourceDeviceType: source_device_type,
+      localEventId: local_event_id,
+      source,
       metadata,
     });
-    res.status(201).json({ success: true, receipt: result.receipt, event: result.event });
+    res.status(result.alreadyProcessed ? 200 : 201).json({
+      success: true,
+      status: result.alreadyProcessed ? 'duplicate' : 'success',
+      receipt: result.receipt,
+      event: result.event
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const syncReceiptConsumptions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { events } = req.body as { events: Array<Record<string, unknown>> };
+    const result = await receiptService.syncReceiptConsumptions({
+      events: events as any,
+      actorUserId: req.user?.id ?? null,
+      actorUsername: req.user?.username ?? null,
+      actorRole: (req.user?.role as Role | undefined) ?? null
+    });
+    res.status(201).json({
+      success: true,
+      server_time: result.serverTime.toISOString(),
+      results: result.results
+    });
   } catch (error) {
     next(error);
   }

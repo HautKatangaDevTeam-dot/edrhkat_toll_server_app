@@ -11,16 +11,16 @@ import {
   getDeviceStats,
 } from '../repositories/dashboard.repository';
 
-const DEFAULT_RANGE_DAYS = 7;
 const MAX_RANGE_DAYS = 90;
 const postScopedRoles: Role[] = [];
 
 export type DashboardSummary = {
-  rangeDays: number;
-  since: string;
+  rangeDays: number | null;
+  since: string | null;
   companies: {
     total: number;
     active: number;
+    blocked: number;
   };
   transactions: {
     total: number;
@@ -36,19 +36,21 @@ export type DashboardSummary = {
   };
 };
 
-const clampRange = (days: number): number => {
-  if (Number.isNaN(days) || days <= 0) return DEFAULT_RANGE_DAYS;
+const clampRange = (days?: number): number | null => {
+  if (days == null || Number.isNaN(days) || days <= 0) return null;
   return Math.min(days, MAX_RANGE_DAYS);
 };
 
 export const getDashboardSummary = async (
   role: Role,
   post: Post | undefined,
-  requestedDays: number
+  requestedDays?: number
 ): Promise<DashboardSummary> => {
   // All authorized roles receive the same summary today; adjust here if per-role filtering is needed later.
   const rangeDays = clampRange(requestedDays);
-  const since = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
+  const since = rangeDays == null
+    ? null
+    : new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
   const scopedPost = postScopedRoles.includes(role) ? post : undefined;
 
   const [companyStats, txnStats, paymentModes, topPosts, topCompanies, deviceStats] =
@@ -63,10 +65,11 @@ export const getDashboardSummary = async (
 
   return {
     rangeDays,
-    since: since.toISOString(),
+    since: since?.toISOString() ?? null,
     companies: {
       total: companyStats.total,
-      active: companyStats.active
+      active: companyStats.active,
+      blocked: companyStats.blocked
     },
     transactions: {
       total: txnStats.total,

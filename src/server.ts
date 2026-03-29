@@ -4,6 +4,7 @@ import logger from './config/logger';
 import { verifyDatabaseConnection } from './config/database';
 import { initializeAuth } from './services/auth.service';
 import { initializeCompanies } from './services/company.service';
+import { initializeMonitoring } from './services/monitoring.service';
 import { initializePos } from './services/pos.service';
 
 const startServer = async () => {
@@ -14,6 +15,8 @@ const startServer = async () => {
     logger.info('Auth module initialized');
     await initializeCompanies();
     logger.info('Company and receipt modules initialized');
+    await initializeMonitoring();
+    logger.info('Monitoring module initialized');
     await initializePos();
     logger.info('POS module initialized');
 

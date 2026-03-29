@@ -1,3 +1,4 @@
+import type { StringValue } from 'ms';
 import crypto from 'crypto';
 import { Role } from '../constants/roles';
 import { Post } from '../constants/posts';
@@ -7,15 +8,19 @@ import { hashToken } from '../utils/token';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import {
   createUser,
+  deleteAllRefreshSessionsForUser,
+  findRefreshSessionById,
   ensureUsersTable,
   findByUsername,
   findById,
   listUsers as listUsersRepo,
-  saveRefreshToken,
+  saveRefreshSession,
   updateUserCredentialsAndScope,
+  updateUserPasswordById,
   User
 } from '../repositories/user.repository';
 import { initializeCompanies } from './company.service';
+import env from '../config/env';
 
 type AuthTokens = {
   accessToken: string;
@@ -29,10 +34,23 @@ const DEFAULT_ADMIN = {
   post: 'DIRECTION_GENERALE' as Post
 };
 
-const issueTokens = async (user: User): Promise<AuthTokens> => {
+export const DEFAULT_RESET_PASSWORD = 'Tabc@123';
+
+const issueTokens = async (
+  user: User,
+  options?: { mobileClient?: boolean; sessionId?: string }
+): Promise<AuthTokens> => {
   const payload = { sub: user.id, username: user.username, role: user.role, post: user.post };
-  const refreshToken = signRefreshToken(payload);
-  await saveRefreshToken(user.id, hashToken(refreshToken));
+  const sessionId = options?.sessionId ?? crypto.randomUUID();
+  const clientType = options?.mobileClient ? 'mobile' : 'web';
+  const refreshToken = signRefreshToken(
+    payload,
+    (options?.mobileClient ? env.jwt.mobileRefreshExpiresIn : env.jwt.refreshExpiresIn) as
+      | StringValue
+      | number,
+    sessionId
+  );
+  await saveRefreshSession(sessionId, user.id, hashToken(refreshToken), clientType);
 
   return {
     accessToken: signAccessToken(payload),
@@ -90,7 +108,11 @@ export const register = async (username: string, password: string, role: Role, p
   return { user: { id: user.id, username: user.username, role: user.role, post: user.post } };
 };
 
-export const login = async (username: string, password: string) => {
+export const login = async (
+  username: string,
+  password: string,
+  options?: { mobileClient?: boolean }
+) => {
   const normalizedUsername = username.toLowerCase();
   const user = await findByUsername(normalizedUsername);
   if (!user) {
@@ -102,11 +124,14 @@ export const login = async (username: string, password: string) => {
     throw new AppError('Identifiant ou mot de passe invalide', 401, 'AUTH_INVALID_CREDENTIALS');
   }
 
-  const tokens = await issueTokens(user);
+  const tokens = await issueTokens(user, options);
   return { user: { id: user.id, username: user.username, role: user.role, post: user.post }, ...tokens };
 };
 
-export const refreshSession = async (token: string) => {
+export const refreshSession = async (
+  token: string,
+  options?: { mobileClient?: boolean }
+) => {
   let payload;
   try {
     payload = verifyRefreshToken(token);
@@ -115,21 +140,26 @@ export const refreshSession = async (token: string) => {
   }
 
   const userId = payload.sub as string;
+  const sessionId = typeof payload.jti === 'string' ? payload.jti : null;
+  if (!sessionId) {
+    throw new AppError('Session expiree, veuillez vous reconnecter', 401, 'AUTH_SESSION_EXPIRED');
+  }
   const user = await findById(userId);
-  if (!user || !user.refreshTokenHash) {
+  const session = await findRefreshSessionById(sessionId);
+  if (!user || !session) {
     throw new AppError('Session expiree, veuillez vous reconnecter', 401, 'AUTH_SESSION_EXPIRED');
   }
 
-  if (hashToken(token) !== user.refreshTokenHash) {
+  if (hashToken(token) !== session.refreshTokenHash) {
     throw new AppError('Session expiree, veuillez vous reconnecter', 401, 'AUTH_SESSION_EXPIRED');
   }
 
-  const tokens = await issueTokens(user);
+  const tokens = await issueTokens(user, { ...options, sessionId });
   return { user: { id: user.id, username: user.username, role: user.role, post: user.post }, ...tokens };
 };
 
 export const logout = async (userId: string): Promise<void> => {
-  await saveRefreshToken(userId, null);
+  await deleteAllRefreshSessionsForUser(userId);
 };
 
 export const listUsers = async (
@@ -158,5 +188,34 @@ export const listUsers = async (
     total,
     page,
     pageSize
+  };
+};
+
+export const resetUserPassword = async (userId: string) => {
+  const user = await findById(userId);
+  if (!user) {
+    throw new AppError('Utilisateur introuvable', 404, 'AUTH_USER_NOT_FOUND');
+  }
+
+  const passwordHash = await hashPassword(DEFAULT_RESET_PASSWORD);
+  const updatedUser = await updateUserPasswordById(userId, passwordHash);
+  if (!updatedUser) {
+    throw new AppError(
+      'Impossible de reinitialiser le mot de passe',
+      500,
+      'AUTH_PASSWORD_RESET_FAILED'
+    );
+  }
+
+  await deleteAllRefreshSessionsForUser(userId);
+
+  return {
+    user: {
+      id: updatedUser.id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      post: updatedUser.post
+    },
+    defaultPassword: DEFAULT_RESET_PASSWORD
   };
 };

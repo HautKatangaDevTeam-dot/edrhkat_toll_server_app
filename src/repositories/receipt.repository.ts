@@ -328,6 +328,22 @@ const createShortCode = (): string => {
   return `${out.slice(0, 4)}-${out.slice(4)}`;
 };
 
+const resolveExistingUserId = async (
+  client: PoolClient,
+  userId?: string | null
+): Promise<string | null> => {
+  if (!userId) {
+    return null;
+  }
+
+  const result = await client.query<{ id: string }>(
+    'SELECT id FROM users WHERE id = $1 LIMIT 1;',
+    [userId]
+  );
+
+  return result.rows[0]?.id ?? null;
+};
+
 const signBatchQrPayload = (batchId: string, batchShortCode: string, issuedAt: string): string => {
   return crypto
     .createHmac('sha256', env.receiptBatchQrSecret)
@@ -455,6 +471,7 @@ export const createReceiptForTollTransaction = async (
 ): Promise<Receipt> => {
   const receiptId = crypto.randomUUID();
   const shortCode = await nextUniqueShortCode(client);
+  const actorUserId = await resolveExistingUserId(client, input.agentId ?? null);
   const channel: ReceiptChannel = input.exceptionalIssue
     ? 'EXCEPTIONAL_TOLL'
     : 'SINGLE_TOLL';
@@ -525,7 +542,7 @@ export const createReceiptForTollTransaction = async (
     [
       crypto.randomUUID(),
       receipt.id,
-      input.agentId ?? null,
+      actorUserId,
       input.agentName ?? null,
       input.postId ?? null,
       JSON.stringify({
@@ -1017,7 +1034,12 @@ const buildTollReceiptSignedPayload = (input: {
   ].join('|');
 };
 
-const extractReceiptQrIdentity = (rawPayload: string): { keyId: string; signature: string; payloadHash: string } => {
+const extractReceiptQrIdentity = (rawPayload: string): {
+  keyId: string;
+  signature: string;
+  payloadHash: string;
+  shortCode: string | null;
+} => {
   let decoded: Record<string, unknown>;
   try {
     const parsed = JSON.parse(rawPayload.trim());
@@ -1032,11 +1054,15 @@ const extractReceiptQrIdentity = (rawPayload: string): { keyId: string; signatur
   const keyId = typeof decoded.keyId === 'string' ? decoded.keyId.trim() : '';
   const signature = typeof decoded.signature === 'string' ? decoded.signature.trim() : '';
   const payload = typeof decoded.payload === 'string' ? decoded.payload.trim() : '';
+  const shortCode =
+    typeof decoded.shortCode === 'string' && decoded.shortCode.trim().length > 0
+      ? decoded.shortCode.trim().toUpperCase()
+      : null;
   if (!keyId || !signature || !payload) {
     throw new AppError('QR recu invalide.', 400, 'RECEIPT_QR_INVALID');
   }
 
-  return { keyId, signature, payloadHash: computePayloadHash(payload) };
+  return { keyId, signature, payloadHash: computePayloadHash(payload), shortCode };
 };
 
 export const findReceiptByLookup = async (input: {
@@ -1049,7 +1075,7 @@ export const findReceiptByLookup = async (input: {
 
   if (input.qrPayload && input.qrPayload.trim()) {
     const identity = extractReceiptQrIdentity(input.qrPayload);
-    const result = await pool.query(
+    const exactResult = await pool.query(
       `
         SELECT r.*, c.name AS company_name, c.code AS company_code
         FROM receipts r
@@ -1064,7 +1090,37 @@ export const findReceiptByLookup = async (input: {
       `,
       [identity.keyId, identity.signature, identity.payloadHash]
     );
-    return result.rows[0] ? mapReceiptRow(result.rows[0]) : null;
+
+    if (exactResult.rows[0]) {
+      return mapReceiptRow(exactResult.rows[0]);
+    }
+
+    // Fallback for receipts issued before QR payload format fixes: key_id + signature are
+    // still enough to identify the issued receipt uniquely in practice.
+    const fallbackResult = await pool.query(
+      `
+        SELECT r.*, c.name AS company_name, c.code AS company_code
+        FROM receipts r
+        LEFT JOIN companies c ON c.id = r.company_id
+        INNER JOIN receipt_events e ON e.receipt_id = r.id
+        WHERE e.event_type = 'ISSUED'
+          AND e.metadata->>'key_id' = $1
+          AND e.metadata->>'signature' = $2
+        ORDER BY e.created_at DESC
+        LIMIT 1;
+      `,
+      [identity.keyId, identity.signature]
+    );
+
+    if (fallbackResult.rows[0]) {
+      return mapReceiptRow(fallbackResult.rows[0]);
+    }
+
+    if (identity.shortCode) {
+      return findReceiptByShortCode(identity.shortCode);
+    }
+
+    return null;
   }
 
   return null;
@@ -1080,11 +1136,39 @@ export const consumeSingleReceipt = async (input: {
   postId?: string | null;
   sourceDeviceId?: string | null;
   sourceDeviceType?: string | null;
+  localEventId?: string | null;
+  source?: string | null;
   metadata?: Record<string, unknown>;
-}): Promise<{ receipt: Receipt; event: ReceiptEvent }> => {
+}): Promise<{ receipt: Receipt; event: ReceiptEvent; alreadyProcessed: boolean }> => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    if (input.localEventId && input.sourceDeviceId) {
+      const existingResult = await client.query(
+        `
+          SELECT e.*, r.*, c.name AS company_name, c.code AS company_code
+          FROM receipt_events e
+          INNER JOIN receipts r ON r.id = e.receipt_id
+          LEFT JOIN companies c ON c.id = r.company_id
+          WHERE e.event_type = 'CONSUMED'
+            AND e.source_device_id = $1
+            AND COALESCE(e.metadata->>'local_event_id', '') = $2
+          ORDER BY e.created_at DESC
+          LIMIT 1;
+        `,
+        [input.sourceDeviceId, input.localEventId]
+      );
+
+      if (existingResult.rows[0]) {
+        await client.query('COMMIT');
+        return {
+          receipt: mapReceiptRow(existingResult.rows[0]),
+          event: mapEventRow(existingResult.rows[0]),
+          alreadyProcessed: true
+        };
+      }
+    }
 
     let receiptRowResult;
     if (input.shortCode && input.shortCode.trim()) {
@@ -1116,6 +1200,20 @@ export const consumeSingleReceipt = async (input: {
         `,
         [identity.keyId, identity.signature]
       );
+
+      if (!receiptRowResult.rows[0] && identity.shortCode) {
+        receiptRowResult = await client.query(
+          `
+            SELECT r.*, c.name AS company_name, c.code AS company_code
+            FROM receipts r
+            LEFT JOIN companies c ON c.id = r.company_id
+            WHERE r.short_code = $1
+            LIMIT 1
+            FOR UPDATE OF r;
+          `,
+          [identity.shortCode]
+        );
+      }
     }
 
     if (!receiptRowResult.rows[0]) {
@@ -1173,12 +1271,20 @@ export const consumeSingleReceipt = async (input: {
         input.sourceDeviceId ?? null,
         input.sourceDeviceType ?? null,
         input.postId ?? null,
-        JSON.stringify(input.metadata ?? {}),
+        JSON.stringify({
+          source: input.source ?? 'manual',
+          local_event_id: input.localEventId ?? null,
+          ...((input.metadata ?? {}) as Record<string, unknown>)
+        }),
       ]
     );
 
     await client.query('COMMIT');
-    return { receipt, event: mapEventRow(eventResult.rows[0]) };
+    return {
+      receipt,
+      event: mapEventRow(eventResult.rows[0]),
+      alreadyProcessed: false
+    };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

@@ -43,7 +43,11 @@ const env = {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
     refreshSecret: process.env.JWT_REFRESH_SECRET as string,
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
-    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d'
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+    mobileRefreshExpiresIn:
+      process.env.JWT_MOBILE_REFRESH_EXPIRES_IN ??
+      process.env.JWT_REFRESH_EXPIRES_IN ??
+      '90d'
   },
   receiptBatchQrSecret: process.env.RECEIPT_BATCH_QR_SECRET ?? process.env.JWT_ACCESS_SECRET as string
 };

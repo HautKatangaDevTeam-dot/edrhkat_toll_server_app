@@ -1,6 +1,13 @@
 import crypto from 'crypto';
 import AppError from '../utils/appError';
-import { ensureDevicesTable, isDeviceActive, touchDevice, upsertDevice } from '../repositories/device.repository';
+import {
+  ensureDevicesTable,
+  isDeviceActive,
+  listDevicesForMonitoring,
+  markDeviceSync,
+  updateDeviceRegistryEntry,
+  upsertDevice
+} from '../repositories/device.repository';
 import {
   getCompany,
   listCompanySnapshots,
@@ -16,6 +23,12 @@ import {
 import { ensureCompaniesTable } from '../repositories/company.repository';
 import { createReceiptForTollTransaction, ensureReceiptTables } from '../repositories/receipt.repository';
 import logger from '../config/logger';
+import {
+  ensureKeyBundleTable,
+  getPublishedKeyBundle,
+  listRegisteredPublicKeys,
+  publishKeyBundle
+} from '../repositories/keyBundle.repository';
 
 let posInitPromise: Promise<void> | null = null;
 
@@ -24,6 +37,7 @@ const ensurePosTables = async () => {
     posInitPromise = (async () => {
       await ensureCompaniesTable();
       await ensureDevicesTable();
+      await ensureKeyBundleTable();
       await ensureTollTransactionsTable();
       await ensureReceiptTables();
     })();
@@ -82,7 +96,7 @@ export const processTransactions = async (
   // Ensure/validate device
   await upsertDevice(deviceId, deviceType ?? 'TOLL_POS');
   const active = await isDeviceActive(deviceId);
-  await touchDevice(deviceId);
+  await markDeviceSync(deviceId);
   if (!active) {
     throw new AppError('Device is not active', 403);
   }
@@ -222,5 +236,103 @@ export const listCompaniesSince = async (since?: Date) => {
     success: true,
     server_time: new Date().toISOString(),
     data: snapshots
+  };
+};
+
+export const heartbeatPosDevice = async (
+  deviceId: string,
+  deviceType?: string | null
+) => {
+  await ensurePosTables();
+  await upsertDevice(deviceId, deviceType ?? 'TOLL_POS');
+  return {
+    success: true,
+    server_time: new Date().toISOString(),
+    data: {
+      device_id: deviceId,
+      device_type: deviceType ?? 'TOLL_POS'
+    }
+  };
+};
+
+export const listPosDevices = async (staleMinutes: number) => {
+  await ensurePosTables();
+  const effectiveStaleMinutes = Number.isNaN(staleMinutes) || staleMinutes <= 0 ? 60 : staleMinutes;
+  const devices = await listDevicesForMonitoring(effectiveStaleMinutes);
+  return {
+    success: true,
+    stale_minutes: effectiveStaleMinutes,
+    stale_count: devices.filter((device) => device.stale).length,
+    data: devices
+  };
+};
+
+export const updatePosDevice = async (
+  id: string,
+  input: {
+    label?: string | null;
+    contactPhone?: string | null;
+    assignedPost?: string | null;
+    isActive?: boolean;
+  }
+) => {
+  await ensurePosTables();
+  await upsertDevice(id, 'TOLL_POS');
+  const updated = await updateDeviceRegistryEntry(id, input);
+  if (!updated) {
+    throw new AppError('POS device not found', 404, 'POS_DEVICE_NOT_FOUND');
+  }
+  return { success: true, data: updated };
+};
+
+export const getCentralKeyBundle = async () => {
+  await ensurePosTables();
+  const bundle = await getPublishedKeyBundle();
+  if (!bundle) {
+    throw new AppError('No central key bundle published', 404, 'POS_KEY_BUNDLE_NOT_FOUND');
+  }
+  return {
+    success: true,
+    data: {
+      bundle_json: bundle.bundleJson,
+      updated_at: bundle.updatedAt.toISOString(),
+      updated_by_user_id: bundle.updatedByUserId,
+      updated_by_username: bundle.updatedByUsername
+    }
+  };
+};
+
+export const listCentralKeyRegistry = async () => {
+  await ensurePosTables();
+  const keys = await listRegisteredPublicKeys();
+  return {
+    success: true,
+    data: keys.map((key) => ({
+      key_id: key.keyId,
+      label: key.label,
+      status: key.status,
+      created_at: key.createdAt.toISOString(),
+      updated_at: key.updatedAt.toISOString(),
+      updated_by_user_id: key.updatedByUserId,
+      updated_by_username: key.updatedByUsername
+    }))
+  };
+};
+
+export const publishCentralKeyBundle = async (input: {
+  bundleJson: string;
+  updatedByUserId?: string | null;
+  updatedByUsername?: string | null;
+}) => {
+  await ensurePosTables();
+  const bundle = await publishKeyBundle(input);
+  return {
+    success: true,
+    data: {
+      bundle_json: bundle.bundleJson,
+      updated_at: bundle.updatedAt.toISOString(),
+      updated_by_user_id: bundle.updatedByUserId,
+      updated_by_username: bundle.updatedByUsername
+    }
   };
 };

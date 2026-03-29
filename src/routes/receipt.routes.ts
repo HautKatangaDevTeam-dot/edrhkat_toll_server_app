@@ -12,6 +12,7 @@ import {
   listBatchReceiptsSchema,
   listReceiptBatchesSchema,
   receiptBatchIdSchema,
+  receiptConsumeSyncSchema,
   receiptLookupSchema,
   receiptConsumeSchema
 } from '../schemas/receipt.schema';
@@ -93,6 +94,14 @@ router.get(
   authorize(...receiptLookupRoles),
   validateRequest(receiptLookupSchema),
   receiptController.lookupReceipt
+);
+
+router.post(
+  '/consume/sync',
+  authenticate,
+  authorize(...consumeRoles),
+  validateRequest(receiptConsumeSyncSchema),
+  receiptController.syncReceiptConsumptions
 );
 
 router.post(

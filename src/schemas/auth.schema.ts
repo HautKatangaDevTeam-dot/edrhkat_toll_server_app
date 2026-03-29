@@ -56,3 +56,10 @@ export const listUsersSchema = z.object({
     pageSize: z.coerce.number().int().min(1).max(100).default(10)
   })
 });
+
+export const resetPasswordSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Identifiant utilisateur invalide')
+  }),
+  body: z.object({}).optional()
+});

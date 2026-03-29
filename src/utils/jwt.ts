@@ -15,8 +15,15 @@ const refreshOptions: SignOptions = { expiresIn: env.jwt.refreshExpiresIn as Str
 export const signAccessToken = (payload: Payload): string =>
   jwt.sign(payload, env.jwt.accessSecret as Secret, accessOptions);
 
-export const signRefreshToken = (payload: Payload): string =>
-  jwt.sign(payload, env.jwt.refreshSecret as Secret, refreshOptions);
+export const signRefreshToken = (
+  payload: Payload,
+  expiresIn: StringValue | number = refreshOptions.expiresIn as StringValue | number,
+  jwtId?: string
+): string =>
+  jwt.sign(payload, env.jwt.refreshSecret as Secret, {
+    expiresIn,
+    ...(jwtId != null ? { jwtid: jwtId } : {}),
+  });
 
 export const verifyAccessToken = (token: string): JwtPayload =>
   jwt.verify(token, env.jwt.accessSecret as Secret) as JwtPayload;

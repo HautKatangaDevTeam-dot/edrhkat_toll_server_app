@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { validateRequest } from '../middlewares/validateRequest';
-import { posCompaniesSinceSchema, posSyncSchema, listTollTransactionsSchema } from '../schemas/pos.schema';
+import {
+  posCompaniesSinceSchema,
+  posHeartbeatSchema,
+  posSyncSchema,
+  listTollTransactionsSchema,
+  listPosDevicesSchema,
+  updatePosDeviceSchema,
+  publishKeyBundleSchema
+} from '../schemas/pos.schema';
 import * as posController from '../controllers/pos.controller';
 import * as tollController from '../controllers/toll.controller';
 import { authenticate } from '../middlewares/authenticate';
@@ -11,6 +19,13 @@ const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR'] as const;
 const posRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU', 'AGENT_TOLL'] as const;
 const tollRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
 
+router.post(
+  '/heartbeat',
+  authenticate,
+  authorize(...posRoles),
+  validateRequest(posHeartbeatSchema),
+  posController.heartbeatDevice
+);
 router.post(
   '/transaction',
   authenticate,
@@ -31,6 +46,39 @@ router.get(
   authorize(...readRoles),
   validateRequest(listTollTransactionsSchema),
   tollController.listTransactions
+);
+router.get(
+  '/devices',
+  authenticate,
+  authorize(...readRoles),
+  validateRequest(listPosDevicesSchema),
+  posController.listDevices
+);
+router.patch(
+  '/devices/:id',
+  authenticate,
+  authorize(...readRoles),
+  validateRequest(updatePosDeviceSchema),
+  posController.updateDevice
+);
+router.get(
+  '/key-bundle',
+  authenticate,
+  authorize(...posRoles),
+  posController.getKeyBundle
+);
+router.get(
+  '/key-registry',
+  authenticate,
+  authorize(...readRoles),
+  posController.listKeyRegistry
+);
+router.put(
+  '/key-bundle',
+  authenticate,
+  authorize(...posRoles),
+  validateRequest(publishKeyBundleSchema),
+  posController.publishKeyBundle
 );
 
 export default router;

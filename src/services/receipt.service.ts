@@ -301,6 +301,8 @@ export const consumeReceipt = async (input: {
   postId?: string | null;
   sourceDeviceId?: string | null;
   sourceDeviceType?: string | null;
+  localEventId?: string | null;
+  source?: string | null;
   metadata?: Record<string, unknown>;
 }) => {
   const consumedAt = input.consumedAt ? new Date(input.consumedAt) : null;
@@ -318,6 +320,70 @@ export const consumeReceipt = async (input: {
     postId: input.postId ?? null,
     sourceDeviceId: input.sourceDeviceId ?? null,
     sourceDeviceType: input.sourceDeviceType ?? null,
+    localEventId: input.localEventId ?? null,
+    source: input.source ?? 'manual',
     metadata: input.metadata ?? {}
   });
+};
+
+export const syncReceiptConsumptions = async (input: {
+  events: Array<{
+    code?: string | null;
+    qr_payload?: string | null;
+    consumed_at?: string;
+    post_id?: string | null;
+    source_device_id?: string | null;
+    source_device_type?: string | null;
+    local_event_id?: string | null;
+    source?: string | null;
+    metadata?: Record<string, unknown>;
+  }>;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
+  actorRole?: Role | null;
+}) => {
+  const results = [] as Array<Record<string, unknown>>;
+
+  for (const event of input.events) {
+    try {
+      const consumed = await consumeReceipt({
+        shortCode: event.code ?? null,
+        qrPayload: event.qr_payload ?? null,
+        consumedAt: event.consumed_at,
+        actorUserId: input.actorUserId ?? null,
+        actorUsername: input.actorUsername ?? null,
+        actorRole: input.actorRole ?? null,
+        postId: event.post_id ?? null,
+        sourceDeviceId: event.source_device_id ?? null,
+        sourceDeviceType: event.source_device_type ?? null,
+        localEventId: event.local_event_id ?? null,
+        source: event.source ?? 'sync',
+        metadata: event.metadata ?? {}
+      });
+
+      results.push({
+        local_event_id: event.local_event_id ?? null,
+        status: consumed.alreadyProcessed ? 'duplicate' : 'success',
+        receipt: consumed.receipt,
+        remote_event_id: consumed.event.id,
+        message: consumed.alreadyProcessed ? 'Consommation deja synchronisee.' : 'Consommation synchronisee.'
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        results.push({
+          local_event_id: event.local_event_id ?? null,
+          status: 'error',
+          code: error.code,
+          message: error.message
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return {
+    serverTime: new Date(),
+    results
+  };
 };

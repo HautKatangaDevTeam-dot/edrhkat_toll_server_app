@@ -3,6 +3,7 @@ import pool from '../config/database';
 export type CompanyStats = {
   total: number;
   active: number;
+  blocked: number;
 };
 
 export const getCompanyStats = async (): Promise<CompanyStats> => {
@@ -15,7 +16,10 @@ export const getCompanyStats = async (): Promise<CompanyStats> => {
 
   return {
     total: Number(companies.rows[0]?.total ?? 0),
-    active: Number(companies.rows[0]?.active ?? 0)
+    active: Number(companies.rows[0]?.active ?? 0),
+    blocked:
+      Number(companies.rows[0]?.total ?? 0) -
+      Number(companies.rows[0]?.active ?? 0)
   };
 };
 
@@ -24,9 +28,13 @@ export type TransactionStats = {
   totalAmount: number;
 };
 
-export const getTransactionStats = async (since: Date, postId?: string): Promise<TransactionStats> => {
-  const params: any[] = [since];
-  const where: string[] = ['created_at >= $1'];
+export const getTransactionStats = async (since: Date | null, postId?: string): Promise<TransactionStats> => {
+  const params: any[] = [];
+  const where: string[] = [];
+  if (since) {
+    params.push(since);
+    where.push(`created_at >= $${params.length}`);
+  }
   if (postId) {
     params.push(postId);
     where.push(`post_id = $${params.length}`);
@@ -38,7 +46,7 @@ export const getTransactionStats = async (since: Date, postId?: string): Promise
         COUNT(*) AS total,
         COALESCE(SUM(amount_usd), 0) AS total_amount
       FROM toll_transactions
-      WHERE ${where.join(' AND ')};
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''};
     `,
     params
   );
@@ -55,9 +63,13 @@ export type BreakdownItem = {
   amount: number;
 };
 
-export const getPaymentModeBreakdown = async (since: Date, postId?: string): Promise<BreakdownItem[]> => {
-  const params: any[] = [since];
-  const where: string[] = ['created_at >= $1'];
+export const getPaymentModeBreakdown = async (since: Date | null, postId?: string): Promise<BreakdownItem[]> => {
+  const params: any[] = [];
+  const where: string[] = [];
+  if (since) {
+    params.push(since);
+    where.push(`created_at >= $${params.length}`);
+  }
   if (postId) {
     params.push(postId);
     where.push(`post_id = $${params.length}`);
@@ -67,7 +79,7 @@ export const getPaymentModeBreakdown = async (since: Date, postId?: string): Pro
     `
       SELECT payment_mode AS key, COUNT(*) AS count, COALESCE(SUM(amount_usd), 0) AS amount
       FROM toll_transactions
-      WHERE ${where.join(' AND ')}
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       GROUP BY payment_mode
       ORDER BY amount DESC;
     `,
@@ -82,12 +94,16 @@ export const getPaymentModeBreakdown = async (since: Date, postId?: string): Pro
 };
 
 export const getTopPostsByAmount = async (
-  since: Date,
+  since: Date | null,
   limit = 5,
   postId?: string
 ): Promise<BreakdownItem[]> => {
-  const params: any[] = [since];
-  const where: string[] = ['created_at >= $1'];
+  const params: any[] = [];
+  const where: string[] = [];
+  if (since) {
+    params.push(since);
+    where.push(`created_at >= $${params.length}`);
+  }
   if (postId) {
     params.push(postId);
     where.push(`post_id = $${params.length}`);
@@ -97,7 +113,7 @@ export const getTopPostsByAmount = async (
     `
       SELECT post_id AS key, COUNT(*) AS count, COALESCE(SUM(amount_usd), 0) AS amount
       FROM toll_transactions
-      WHERE ${where.join(' AND ')}
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       GROUP BY post_id
       ORDER BY amount DESC
       LIMIT $${params.length + 1};
@@ -120,12 +136,16 @@ export type CompanyBreakdownItem = {
 };
 
 export const getTopCompaniesByAmount = async (
-  since: Date,
+  since: Date | null,
   limit = 5,
   postId?: string
 ): Promise<CompanyBreakdownItem[]> => {
-  const params: any[] = [since];
-  const where: string[] = ['tt.created_at >= $1'];
+  const params: any[] = [];
+  const where: string[] = ['tt.company_id IS NOT NULL'];
+  if (since) {
+    params.push(since);
+    where.push(`tt.created_at >= $${params.length}`);
+  }
   if (postId) {
     params.push(postId);
     where.push(`tt.post_id = $${params.length}`);

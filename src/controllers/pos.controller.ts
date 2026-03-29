@@ -60,3 +60,97 @@ export const listCompaniesSince = async (
     next(error);
   }
 };
+
+export const heartbeatDevice = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { device_id, device_type } = req.body as {
+      device_id: string;
+      device_type?: string;
+    };
+    const result = await posService.heartbeatPosDevice(device_id, device_type);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listDevices = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const staleMinutes = Number((req.query as Record<string, string | undefined>).stale_minutes ?? '60');
+    const result = await posService.listPosDevices(staleMinutes);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateDevice = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { label, contact_phone, assigned_post, is_active } = req.body as Record<string, unknown>;
+    const result = await posService.updatePosDevice(req.params.id, {
+      label: typeof label === 'string' ? label : null,
+      contactPhone: typeof contact_phone === 'string' ? contact_phone : null,
+      assignedPost: typeof assigned_post === 'string' ? assigned_post : null,
+      isActive: typeof is_active === 'boolean' ? is_active : undefined
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getKeyBundle = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const result = await posService.getCentralKeyBundle();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listKeyRegistry = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const result = await posService.listCentralKeyRegistry();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const publishKeyBundle = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { bundle_json } = req.body as { bundle_json: string };
+    const result = await posService.publishCentralKeyBundle({
+      bundleJson: bundle_json,
+      updatedByUserId: req.user?.id ?? null,
+      updatedByUsername: req.user?.username ?? null
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};

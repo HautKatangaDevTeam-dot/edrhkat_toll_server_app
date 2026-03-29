@@ -61,6 +61,13 @@ export const posCompaniesSinceSchema = z.object({
   })
 });
 
+export const posHeartbeatSchema = z.object({
+  body: z.object({
+    device_id: z.string().trim().min(1).max(64),
+    device_type: z.enum(['OFFICE_POS', 'TOLL_POS']).optional()
+  })
+});
+
 export const listTollTransactionsSchema = z.object({
   query: z.object({
     search: z.string().trim().optional(),
@@ -71,5 +78,35 @@ export const listTollTransactionsSchema = z.object({
     date_to: z.coerce.date().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(10)
+  })
+});
+
+export const listPosDevicesSchema = z.object({
+  query: z.object({
+    stale_minutes: z.coerce.number().int().min(1).max(24 * 60).default(60).optional()
+  })
+});
+
+export const posDeviceIdSchema = z.object({
+  params: z.object({
+    id: z.string().trim().min(1).max(64)
+  })
+});
+
+export const updatePosDeviceSchema = z.object({
+  params: z.object({
+    id: z.string().trim().min(1).max(64)
+  }),
+  body: z.object({
+    label: z.string().trim().max(120).nullable().optional(),
+    contact_phone: z.string().trim().max(32).nullable().optional(),
+    assigned_post: z.enum(POSTS).nullable().optional(),
+    is_active: z.boolean().optional()
+  })
+});
+
+export const publishKeyBundleSchema = z.object({
+  body: z.object({
+    bundle_json: z.string().trim().min(2)
   })
 });

@@ -119,8 +119,30 @@ export const receiptConsumeSchema = z.object({
     post_id: z.string().trim().max(64).optional(),
     source_device_id: z.string().trim().max(64).optional(),
     source_device_type: z.string().trim().max(32).optional(),
+    local_event_id: z.string().trim().max(64).optional(),
+    source: z.enum(['manual', 'scan', 'sync']).optional(),
     metadata: z.record(z.string(), z.unknown()).optional()
   }).refine((value) => Boolean(value.code || value.qr_payload), {
     message: 'code or qr_payload is required'
+  })
+});
+
+export const receiptConsumeSyncSchema = z.object({
+  body: z.object({
+    events: z.array(
+      z.object({
+        code: z.string().trim().min(4).max(32).optional(),
+        qr_payload: z.string().trim().min(8).max(4096).optional(),
+        consumed_at: z.string().datetime().optional(),
+        post_id: z.string().trim().max(64).optional(),
+        source_device_id: z.string().trim().max(64).optional(),
+        source_device_type: z.string().trim().max(32).optional(),
+        local_event_id: z.string().trim().max(64).optional(),
+        source: z.enum(['manual', 'scan', 'sync']).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      }).refine((value) => Boolean(value.code || value.qr_payload), {
+        message: 'code or qr_payload is required'
+      })
+    ).min(1).max(200)
   })
 });
