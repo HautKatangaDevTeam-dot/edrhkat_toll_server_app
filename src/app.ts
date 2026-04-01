@@ -10,6 +10,23 @@ import { errorHandler, notFound } from "./middlewares/errorHandler";
 
 const app = express();
 
+const isAllowedOrigin = (origin: string) => {
+  if (env.corsOrigins.includes("*") || env.corsOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (env.nodeEnv !== "production") {
+    try {
+      const { hostname } = new URL(origin);
+      return hostname === "localhost" || hostname === "127.0.0.1";
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+};
+
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
@@ -18,7 +35,7 @@ app.use(
     origin: env.corsOrigins.includes("*")
       ? undefined
       : (origin, callback) => {
-          if (!origin || env.corsOrigins.includes(origin)) {
+          if (!origin || isAllowedOrigin(origin)) {
             callback(null, origin);
           } else {
             callback(new Error("Not allowed by CORS"));

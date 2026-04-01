@@ -10,11 +10,8 @@ const username = z
   .max(50, "L'identifiant doit contenir au maximum 50 caracteres");
 const password = z
   .string()
-  .min(8, 'Le mot de passe doit contenir au moins 8 caracteres')
-  .max(72, 'Le mot de passe doit contenir au maximum 72 caracteres')
-  .regex(/[A-Z]/, 'Le mot de passe doit contenir une majuscule')
-  .regex(/[a-z]/, 'Le mot de passe doit contenir une minuscule')
-  .regex(/[0-9]/, 'Le mot de passe doit contenir un chiffre');
+  .min(1, 'Le mot de passe est requis')
+  .max(72, 'Le mot de passe doit contenir au maximum 72 caracteres');
 
 export const registerSchema = z.object({
   body: z.object({
