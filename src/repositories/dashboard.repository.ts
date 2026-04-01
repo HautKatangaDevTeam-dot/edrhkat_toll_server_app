@@ -210,16 +210,20 @@ export const getDeviceStats = async (): Promise<DeviceStats> => {
 export const getRecentConnections = async (limit = 10): Promise<RecentConnectionItem[]> => {
   const result = await pool.query(
     `
-      SELECT
-        s.id AS session_id,
-        u.username,
-        u.role,
-        u.post AS user_post,
-        s.client_type,
-        s.created_at AS connected_at
-      FROM user_refresh_sessions s
-      INNER JOIN users u ON u.id = s.user_id
-      ORDER BY s.created_at DESC
+      SELECT *
+      FROM (
+        SELECT DISTINCT ON (s.user_id, s.client_type)
+          s.id AS session_id,
+          u.username,
+          u.role,
+          u.post AS user_post,
+          s.client_type,
+          s.created_at AS connected_at
+        FROM user_refresh_sessions s
+        INNER JOIN users u ON u.id = s.user_id
+        ORDER BY s.user_id, s.client_type, s.created_at DESC
+      ) recent
+      ORDER BY connected_at DESC
       LIMIT $1;
     `,
     [limit]
