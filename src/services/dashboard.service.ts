@@ -9,6 +9,7 @@ import {
   getTopPostsByAmount,
   getTransactionStats,
   getDeviceStats,
+  getRecentConnections,
 } from '../repositories/dashboard.repository';
 
 const MAX_RANGE_DAYS = 90;
@@ -34,6 +35,14 @@ export type DashboardSummary = {
     active: number;
     inactive: number;
   };
+  recentConnections: Array<{
+    sessionId: string;
+    username: string;
+    role: string;
+    userPost: string;
+    clientType: string;
+    connectedAt: string;
+  }>;
 };
 
 const clampRange = (days?: number): number | null => {
@@ -53,14 +62,15 @@ export const getDashboardSummary = async (
     : new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
   const scopedPost = postScopedRoles.includes(role) ? post : undefined;
 
-  const [companyStats, txnStats, paymentModes, topPosts, topCompanies, deviceStats] =
+  const [companyStats, txnStats, paymentModes, topPosts, topCompanies, deviceStats, recentConnections] =
     await Promise.all([
       getCompanyStats(),
       getTransactionStats(since, scopedPost),
       getPaymentModeBreakdown(since, scopedPost),
       getTopPostsByAmount(since, undefined, scopedPost),
       getTopCompaniesByAmount(since, undefined, scopedPost),
-      getDeviceStats()
+      getDeviceStats(),
+      getRecentConnections(10)
     ]);
 
   return {
@@ -79,5 +89,14 @@ export const getDashboardSummary = async (
       topCompanies
     },
     devices: deviceStats
+    ,
+    recentConnections: recentConnections.map((item) => ({
+      sessionId: item.sessionId,
+      username: item.username,
+      role: item.role,
+      userPost: item.userPost,
+      clientType: item.clientType,
+      connectedAt: item.connectedAt.toISOString()
+    }))
   };
 };

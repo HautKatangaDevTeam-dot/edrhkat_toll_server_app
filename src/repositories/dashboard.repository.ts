@@ -182,6 +182,15 @@ export type DeviceStats = {
   inactive: number;
 };
 
+export type RecentConnectionItem = {
+  sessionId: string;
+  username: string;
+  role: string;
+  userPost: string;
+  clientType: string;
+  connectedAt: Date;
+};
+
 export const getDeviceStats = async (): Promise<DeviceStats> => {
   const result = await pool.query(`
     SELECT
@@ -196,4 +205,32 @@ export const getDeviceStats = async (): Promise<DeviceStats> => {
     active: Number(result.rows[0]?.active ?? 0),
     inactive: Number(result.rows[0]?.inactive ?? 0)
   };
+};
+
+export const getRecentConnections = async (limit = 10): Promise<RecentConnectionItem[]> => {
+  const result = await pool.query(
+    `
+      SELECT
+        s.id AS session_id,
+        u.username,
+        u.role,
+        u.post AS user_post,
+        s.client_type,
+        s.created_at AS connected_at
+      FROM user_refresh_sessions s
+      INNER JOIN users u ON u.id = s.user_id
+      ORDER BY s.created_at DESC
+      LIMIT $1;
+    `,
+    [limit]
+  );
+
+  return result.rows.map((row) => ({
+    sessionId: row.session_id,
+    username: row.username,
+    role: row.role,
+    userPost: row.user_post,
+    clientType: row.client_type,
+    connectedAt: row.connected_at
+  }));
 };
