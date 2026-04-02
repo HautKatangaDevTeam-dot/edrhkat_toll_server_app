@@ -189,19 +189,27 @@ export const updateUserById = async (
   id: string,
   username: string,
   role: Role,
-  post: Post
+  post: Post,
+  passwordHash?: string
 ): Promise<User | null> => {
+  const values = [id, username, role, post];
+  const setClauses = [
+    'username = $2',
+    'role = $3',
+    'post = $4',
+  ];
+  if (passwordHash) {
+    setClauses.push('password_hash = $5');
+  }
   const result = await pool.query(
     `
       UPDATE users
-      SET username = $2,
-          role = $3,
-          post = $4,
+      SET ${setClauses.join(',\n          ')},
           updated_at = NOW()
       WHERE id = $1
       RETURNING *;
     `,
-    [id, username, role, post]
+    passwordHash ? [...values, passwordHash] : values
   );
 
   return result.rows[0] ? mapRow(result.rows[0]) : null;

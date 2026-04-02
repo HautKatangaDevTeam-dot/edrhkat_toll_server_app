@@ -68,6 +68,7 @@ export const updateUserSchema = z.object({
   body: z.object({
     username,
     role: z.enum(ROLES),
-    post: z.enum(POSTS)
+    post: z.enum(POSTS),
+    password: password.optional()
   })
 });

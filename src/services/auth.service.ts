@@ -225,7 +225,8 @@ export const updateUser = async (
   userId: string,
   username: string,
   role: Role,
-  post: Post
+  post: Post,
+  password?: string
 ) => {
   const normalizedUsername = username.toLowerCase();
   const user = await findById(userId);
@@ -238,9 +239,20 @@ export const updateUser = async (
     throw new AppError('Cet identifiant est deja utilise', 409, 'AUTH_USERNAME_EXISTS');
   }
 
-  const updatedUser = await updateUserById(userId, normalizedUsername, role, post);
+  const passwordHash = password ? await hashPassword(password) : undefined;
+  const updatedUser = await updateUserById(
+    userId,
+    normalizedUsername,
+    role,
+    post,
+    passwordHash
+  );
   if (!updatedUser) {
     throw new AppError('Impossible de mettre a jour l\'utilisateur', 500, 'INTERNAL_ERROR');
+  }
+
+  if (passwordHash) {
+    await deleteAllRefreshSessionsForUser(userId);
   }
 
   return {

@@ -186,8 +186,8 @@ export const updateUser = async (
 ) => {
   try {
     const { id } = req.params;
-    const { username, role, post } = req.body;
-    const result = await authService.updateUser(id, username, role, post);
+    const { username, role, post, password } = req.body;
+    const result = await authService.updateUser(id, username, role, post, password);
     res.json({ success: true, ...result });
   } catch (error) {
     next(error);
