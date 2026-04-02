@@ -6,7 +6,6 @@ import { reportReceiptsSchema, reportTransactionsSchema } from '../schemas/repor
 import * as reportController from '../controllers/report.controller';
 
 const router = Router();
-const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR'] as const;
 
 router.get(
   '/transactions',
@@ -19,7 +18,7 @@ router.get(
 router.get(
   '/receipts',
   authenticate,
-  authorize(...readRoles),
+  authorize('ADMIN_SYSTEME'),
   validateRequest(reportReceiptsSchema),
   reportController.receiptsReport
 );
