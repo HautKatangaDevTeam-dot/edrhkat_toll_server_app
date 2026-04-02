@@ -11,7 +11,7 @@ const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR'] as const;
 router.get(
   '/transactions',
   authenticate,
-  authorize(...readRoles),
+  authorize('ADMIN_SYSTEME'),
   validateRequest(reportTransactionsSchema),
   reportController.transactionsReport
 );

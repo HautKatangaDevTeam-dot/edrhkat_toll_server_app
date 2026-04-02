@@ -15,6 +15,7 @@ import {
   findById,
   listUsers as listUsersRepo,
   saveRefreshSession,
+  updateUserById,
   updateUserCredentialsAndScope,
   updateUserPasswordById,
   User
@@ -217,5 +218,37 @@ export const resetUserPassword = async (userId: string) => {
       post: updatedUser.post
     },
     defaultPassword: DEFAULT_RESET_PASSWORD
+  };
+};
+
+export const updateUser = async (
+  userId: string,
+  username: string,
+  role: Role,
+  post: Post
+) => {
+  const normalizedUsername = username.toLowerCase();
+  const user = await findById(userId);
+  if (!user) {
+    throw new AppError('Utilisateur introuvable', 404, 'AUTH_USER_NOT_FOUND');
+  }
+
+  const existing = await findByUsername(normalizedUsername);
+  if (existing && existing.id !== userId) {
+    throw new AppError('Cet identifiant est deja utilise', 409, 'AUTH_USERNAME_EXISTS');
+  }
+
+  const updatedUser = await updateUserById(userId, normalizedUsername, role, post);
+  if (!updatedUser) {
+    throw new AppError('Impossible de mettre a jour l\'utilisateur', 500, 'INTERNAL_ERROR');
+  }
+
+  return {
+    user: {
+      id: updatedUser.id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      post: updatedUser.post
+    }
   };
 };

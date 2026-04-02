@@ -6,7 +6,7 @@ import * as monitoringController from '../controllers/monitoring.controller';
 import { incidentIdSchema, listIncidentsSchema } from '../schemas/monitoring.schema';
 
 const router = Router();
-const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR'] as const;
+const readRoles = ['ADMIN_SYSTEME'] as const;
 
 router.get(
   '/incidents',

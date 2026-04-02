@@ -178,3 +178,18 @@ export const resetPassword = async (
     next(error);
   }
 };
+
+export const updateUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { username, role, post } = req.body;
+    const result = await authService.updateUser(id, username, role, post);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -69,19 +69,23 @@ export const receiptsReport = async (req: Request, res: Response, next: NextFunc
       throw new AppError('Unauthorized', 401);
     }
 
+    const role = req.user.role as Role;
     const { search, company_id, post_id, financial_mode, channel, family, date_from, date_to, limit } = req.query as Record<
       string,
       string | undefined
     >;
+    const enforcedFinancialView = role === 'SUPERVISEUR';
 
     const pageSize = Number(limit) || 500;
     const result = await receiptService.listReceiptsReport({
       search,
-      companyId: company_id,
+      companyId: enforcedFinancialView ? undefined : company_id,
       postId: post_id,
       financialMode: financial_mode as any,
-      channel: channel as any,
-      family: (family as 'financial' | 'passage' | undefined) ?? 'financial',
+      channel: enforcedFinancialView ? undefined : (channel as any),
+      family: enforcedFinancialView
+        ? 'financial'
+        : ((family as 'financial' | 'passage' | undefined) ?? 'financial'),
       startDate: parseDateFromQuery(date_from, 'start'),
       endDate: parseDateFromQuery(date_to, 'end'),
       page: 1,
@@ -104,10 +108,10 @@ export const receiptsReport = async (req: Request, res: Response, next: NextFunc
           date_from: date_from ?? null,
           date_to: date_to ?? null,
           post_id: post_id ?? null,
-          company_id: company_id ?? null,
+          company_id: enforcedFinancialView ? null : (company_id ?? null),
           financial_mode: financial_mode ?? null,
-          channel: channel ?? null,
-          family: family ?? 'financial',
+          channel: enforcedFinancialView ? null : (channel ?? null),
+          family: enforcedFinancialView ? 'financial' : (family ?? 'financial'),
           search: search ?? null,
           limit: pageSize
         }

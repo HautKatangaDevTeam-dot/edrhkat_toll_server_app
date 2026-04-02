@@ -60,3 +60,14 @@ export const resetPasswordSchema = z.object({
   }),
   body: z.object({}).optional()
 });
+
+export const updateUserSchema = z.object({
+  params: z.object({
+    id: z.string().uuid('Identifiant utilisateur invalide')
+  }),
+  body: z.object({
+    username,
+    role: z.enum(ROLES),
+    post: z.enum(POSTS)
+  })
+});

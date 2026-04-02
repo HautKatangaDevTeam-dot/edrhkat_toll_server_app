@@ -15,7 +15,7 @@ import { authenticate } from '../middlewares/authenticate';
 import { authorize } from '../middlewares/authorize';
 
 const router = Router();
-const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR'] as const;
+const readRoles = ['ADMIN_SYSTEME'] as const;
 const posRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU', 'AGENT_TOLL'] as const;
 const tollRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
 

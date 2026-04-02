@@ -185,6 +185,28 @@ export const updateUserCredentialsAndScope = async (
   return result.rows[0] ? mapRow(result.rows[0]) : null;
 };
 
+export const updateUserById = async (
+  id: string,
+  username: string,
+  role: Role,
+  post: Post
+): Promise<User | null> => {
+  const result = await pool.query(
+    `
+      UPDATE users
+      SET username = $2,
+          role = $3,
+          post = $4,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *;
+    `,
+    [id, username, role, post]
+  );
+
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
+};
+
 export const findByUsername = async (username: string): Promise<User | null> => {
   const result = await pool.query(`SELECT * FROM users WHERE username = $1 LIMIT 1;`, [username]);
   return result.rows[0] ? mapRow(result.rows[0]) : null;

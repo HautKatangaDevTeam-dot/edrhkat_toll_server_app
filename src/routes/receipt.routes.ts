@@ -18,10 +18,10 @@ import {
 } from '../schemas/receipt.schema';
 
 const router = Router();
-const readRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR', 'AGENT_BUREAU'] as const;
+const readRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU'] as const;
 const issueRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU'] as const;
-const lookupRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR', 'AGENT_TOLL'] as const;
-const receiptLookupRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR', 'AGENT_BUREAU', 'AGENT_TOLL'] as const;
+const lookupRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
+const receiptLookupRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU', 'AGENT_TOLL'] as const;
 const consumeRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
 
 router.post(

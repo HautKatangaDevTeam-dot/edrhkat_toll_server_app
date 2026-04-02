@@ -11,7 +11,7 @@ import {
 } from "../schemas/company.schema";
 
 const router = Router();
-const controlRoles = [authenticate, authorize("ADMIN_SYSTEME", "SUPERVISEUR")];
+const controlRoles = [authenticate, authorize("ADMIN_SYSTEME")];
 
 router.post(
   "/",

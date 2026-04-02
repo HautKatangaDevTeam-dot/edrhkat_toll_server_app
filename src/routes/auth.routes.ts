@@ -11,6 +11,7 @@ import {
   registerSchema,
   listUsersSchema,
   resetPasswordSchema,
+  updateUserSchema,
 } from "../schemas/auth.schema";
 
 const router = Router();
@@ -42,6 +43,13 @@ router.post(
   authorize("ADMIN_SYSTEME"),
   validateRequest(resetPasswordSchema),
   authController.resetPassword
+);
+router.patch(
+  "/users/:id",
+  authenticate,
+  authorize("ADMIN_SYSTEME"),
+  validateRequest(updateUserSchema),
+  authController.updateUser
 );
 
 export default router;

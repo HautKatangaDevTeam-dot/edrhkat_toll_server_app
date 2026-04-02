@@ -62,15 +62,25 @@ export const getDashboardSummary = async (
     : new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000);
   const scopedPost = postScopedRoles.includes(role) ? post : undefined;
 
+  const isFinancialSupervisor = role === 'SUPERVISEUR';
+
   const [companyStats, txnStats, paymentModes, topPosts, topCompanies, deviceStats, recentConnections] =
     await Promise.all([
-      getCompanyStats(),
+      isFinancialSupervisor
+        ? Promise.resolve({ total: 0, active: 0, blocked: 0 })
+        : getCompanyStats(),
       getTransactionStats(since, scopedPost),
       getPaymentModeBreakdown(since, scopedPost),
       getTopPostsByAmount(since, undefined, scopedPost),
-      getTopCompaniesByAmount(since, undefined, scopedPost),
-      getDeviceStats(),
-      getRecentConnections(10)
+      isFinancialSupervisor
+        ? Promise.resolve([])
+        : getTopCompaniesByAmount(since, undefined, scopedPost),
+      isFinancialSupervisor
+        ? Promise.resolve({ total: 0, active: 0, inactive: 0 })
+        : getDeviceStats(),
+      isFinancialSupervisor
+        ? Promise.resolve([])
+        : getRecentConnections(10)
     ]);
 
   return {
