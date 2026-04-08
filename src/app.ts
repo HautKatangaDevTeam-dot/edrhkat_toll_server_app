@@ -53,8 +53,18 @@ app.use(
   })
 );
 app.use(compression());
-app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+app.use((req, _res, next) => {
+  console.log("[REQ]", {
+    method: req.method,
+    path: req.originalUrl,
+    contentLength: req.headers["content-length"] ?? null,
+    contentType: req.headers["content-type"] ?? null,
+    requestId: req.headers["x-request-id"] ?? null,
+  });
+  next();
+});
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 
 app.use("/api", routes);
