@@ -127,13 +127,14 @@ export const processTransactions = async (
 
       const remoteId = crypto.randomUUID();
 
-      if (tx.vehicle_plate) {
-        const windowStart = new Date(Date.now() - DUPLICATE_PLATE_WINDOW_MINUTES * 60 * 1000);
-        const isRecentDuplicate = await hasRecentTransactionForPlate(tx.post_id, tx.vehicle_plate, windowStart);
-        if (isRecentDuplicate) {
-          throw new AppError('Duplicate plate within time window', 409);
-        }
-      }
+      // Disabled temporarily because offline POS batches can sync late after connectivity returns.
+      // if (tx.vehicle_plate) {
+      //   const windowStart = new Date(Date.now() - DUPLICATE_PLATE_WINDOW_MINUTES * 60 * 1000);
+      //   const isRecentDuplicate = await hasRecentTransactionForPlate(tx.post_id, tx.vehicle_plate, windowStart);
+      //   if (isRecentDuplicate) {
+      //     throw new AppError('Duplicate plate within time window', 409);
+      //   }
+      // }
 
       // Insert toll transaction
       const amountPaid = tx.amount_paid;
