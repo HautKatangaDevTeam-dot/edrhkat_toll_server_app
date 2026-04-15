@@ -141,27 +141,27 @@ export const getTopCompaniesByAmount = async (
   postId?: string
 ): Promise<CompanyBreakdownItem[]> => {
   const params: any[] = [];
-  const where: string[] = ['tt.company_id IS NOT NULL'];
+  const where: string[] = ['r.company_id IS NOT NULL'];
   if (since) {
     params.push(since);
-    where.push(`tt.created_at >= $${params.length}`);
+    where.push(`r.created_at >= $${params.length}`);
   }
   if (postId) {
     params.push(postId);
-    where.push(`tt.post_id = $${params.length}`);
+    where.push(`r.consumed_post = $${params.length}`);
   }
 
   const result = await pool.query(
     `
       SELECT
-        company_id,
-        COALESCE(company_name, c.name) AS company_name,
+        r.company_id,
+        MAX(c.name) AS company_name,
         COUNT(*) AS count,
-        COALESCE(SUM(amount_usd), 0) AS amount
-      FROM toll_transactions tt
-      LEFT JOIN companies c ON c.id = tt.company_id
+        COALESCE(SUM(r.tariff_amount_usd), 0) AS amount
+      FROM receipts r
+      LEFT JOIN companies c ON c.id = r.company_id
       WHERE ${where.join(' AND ')}
-      GROUP BY company_id, company_name, c.name
+      GROUP BY r.company_id
       ORDER BY amount DESC
       LIMIT $${params.length + 1};
     `,
