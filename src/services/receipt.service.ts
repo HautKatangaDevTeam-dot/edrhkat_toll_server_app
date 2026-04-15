@@ -1,7 +1,14 @@
 import { getCompany } from '../repositories/company.repository';
 import type { Role } from '../constants/roles';
-import type { ReceiptChannel, ReceiptFinancialMode, ReceiptStatus, ReceiptTaxType } from '../constants/receipts';
+import type {
+  ReceiptBatchCorrectionMode,
+  ReceiptChannel,
+  ReceiptFinancialMode,
+  ReceiptStatus,
+  ReceiptTaxType
+} from '../constants/receipts';
 import {
+  correctReceiptBatchCompany,
   consumeReceiptBatchQuantity,
   createReceiptBatch,
   ensureReceiptTables,
@@ -10,6 +17,7 @@ import {
   findReceiptByLookup,
   getReceiptBatch,
   listBatchConsumptionEvents,
+  listBatchCorrections,
   listBatchReceipts,
   listReceiptBatches,
   listReceiptBatchesForSync,
@@ -122,8 +130,36 @@ export const getBatch = async (id: string) => {
   if (!batch) {
     throw new AppError('Receipt batch not found', 404, 'RECEIPT_BATCH_NOT_FOUND');
   }
-  const events = await listBatchConsumptionEvents(batch.id);
-  return { batch, events };
+  const [events, corrections] = await Promise.all([
+    listBatchConsumptionEvents(batch.id),
+    listBatchCorrections(batch.id)
+  ]);
+  return { batch, events, corrections };
+};
+
+export const correctBatchCompany = async (input: {
+  batchId: string;
+  targetCompanyId: string;
+  mode: ReceiptBatchCorrectionMode;
+  reason: string;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
+  actorRole?: Role | null;
+}) => {
+  const company = await getCompany(input.targetCompanyId);
+  if (!company) {
+    throw new AppError('Company not found', 404, 'RECEIPT_BATCH_COMPANY_NOT_FOUND');
+  }
+
+  return correctReceiptBatchCompany({
+    batchId: input.batchId,
+    targetCompanyId: input.targetCompanyId,
+    mode: input.mode,
+    reason: input.reason,
+    actorUserId: input.actorUserId ?? null,
+    actorUsername: input.actorUsername ?? null,
+    actorRole: input.actorRole ?? null
+  });
 };
 
 export const getBatchByLookup = async (input: {

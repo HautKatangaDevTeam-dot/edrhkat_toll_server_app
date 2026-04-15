@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { RECEIPT_FINANCIAL_MODES, RECEIPT_STATUSES, RECEIPT_TAX_TYPES } from '../constants/receipts';
+import {
+  RECEIPT_BATCH_CORRECTION_MODES,
+  RECEIPT_FINANCIAL_MODES,
+  RECEIPT_STATUSES,
+  RECEIPT_TAX_TYPES
+} from '../constants/receipts';
 
 export const createReceiptBatchSchema = z.object({
   body: z.object({
@@ -99,6 +104,17 @@ export const listBatchReceiptsSchema = z.object({
     status: z.enum(RECEIPT_STATUSES).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20)
+  })
+});
+
+export const correctReceiptBatchCompanySchema = z.object({
+  params: z.object({
+    id: z.string().uuid()
+  }),
+  body: z.object({
+    target_company_id: z.string().uuid(),
+    mode: z.enum(RECEIPT_BATCH_CORRECTION_MODES),
+    reason: z.string().trim().min(8).max(512)
   })
 });
 

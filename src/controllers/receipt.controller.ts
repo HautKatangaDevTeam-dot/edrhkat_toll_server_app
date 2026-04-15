@@ -1,6 +1,11 @@
 import { NextFunction, Request, Response } from 'express';
 import * as receiptService from '../services/receipt.service';
-import type { ReceiptFinancialMode, ReceiptStatus, ReceiptTaxType } from '../constants/receipts';
+import type {
+  ReceiptBatchCorrectionMode,
+  ReceiptFinancialMode,
+  ReceiptStatus,
+  ReceiptTaxType
+} from '../constants/receipts';
 import type { Role } from '../constants/roles';
 
 export const createBatch = async (req: Request, res: Response, next: NextFunction) => {
@@ -114,6 +119,24 @@ export const getBatch = async (req: Request, res: Response, next: NextFunction) 
   try {
     const result = await receiptService.getBatch(req.params.id);
     res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const correctBatchCompany = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { target_company_id, mode, reason } = req.body;
+    const result = await receiptService.correctBatchCompany({
+      batchId: req.params.id,
+      targetCompanyId: target_company_id,
+      mode: mode as ReceiptBatchCorrectionMode,
+      reason,
+      actorUserId: req.user?.id ?? null,
+      actorUsername: req.user?.username ?? null,
+      actorRole: (req.user?.role as Role | undefined) ?? null
+    });
+    res.status(201).json({ success: true, ...result });
   } catch (error) {
     next(error);
   }

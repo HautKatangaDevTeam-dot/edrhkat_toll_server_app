@@ -8,6 +8,7 @@ import {
   batchConsumeSyncSchema,
   batchLookupSchema,
   batchSyncSchema,
+  correctReceiptBatchCompanySchema,
   createReceiptBatchSchema,
   listBatchReceiptsSchema,
   listReceiptBatchesSchema,
@@ -23,6 +24,7 @@ const issueRoles = ['ADMIN_SYSTEME', 'AGENT_BUREAU'] as const;
 const lookupRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
 const receiptLookupRoles = ['ADMIN_SYSTEME', 'SUPERVISEUR', 'AGENT_BUREAU', 'AGENT_TOLL'] as const;
 const consumeRoles = ['ADMIN_SYSTEME', 'AGENT_TOLL'] as const;
+const correctionRoles = ['ADMIN_SYSTEME'] as const;
 
 router.post(
   '/batches',
@@ -78,6 +80,14 @@ router.get(
   authorize(...readRoles),
   validateRequest(receiptBatchIdSchema),
   receiptController.getBatch
+);
+
+router.post(
+  '/batches/:id/correct-company',
+  authenticate,
+  authorize(...correctionRoles),
+  validateRequest(correctReceiptBatchCompanySchema),
+  receiptController.correctBatchCompany
 );
 
 router.get(

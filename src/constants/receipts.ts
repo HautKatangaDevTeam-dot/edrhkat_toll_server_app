@@ -9,3 +9,6 @@ export type ReceiptStatus = (typeof RECEIPT_STATUSES)[number];
 
 export const RECEIPT_CHANNELS = ['COMPANY_BATCH', 'SINGLE_TOLL', 'EXCEPTIONAL_TOLL'] as const;
 export type ReceiptChannel = (typeof RECEIPT_CHANNELS)[number];
+
+export const RECEIPT_BATCH_CORRECTION_MODES = ['TRANSFER_ALL', 'MOVE_REMAINING'] as const;
+export type ReceiptBatchCorrectionMode = (typeof RECEIPT_BATCH_CORRECTION_MODES)[number];

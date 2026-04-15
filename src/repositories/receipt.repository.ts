@@ -4,6 +4,7 @@ import pool from '../config/database';
 import env from '../config/env';
 import type {
   ReceiptChannel,
+  ReceiptBatchCorrectionMode,
   ReceiptFinancialMode,
   ReceiptStatus,
   ReceiptTaxType
@@ -95,6 +96,31 @@ export type ReceiptBatchConsumptionEvent = {
   createdAt: Date;
 };
 
+export type ReceiptBatchCorrection = {
+  id: string;
+  sourceBatchId: string;
+  targetBatchId: string | null;
+  sourceBatchCode: string;
+  targetBatchCode: string | null;
+  sourceCompanyId: string;
+  sourceCompanyName: string | null;
+  sourceCompanyCode: string | null;
+  targetCompanyId: string;
+  targetCompanyName: string | null;
+  targetCompanyCode: string | null;
+  mode: ReceiptBatchCorrectionMode;
+  reason: string;
+  movedQuantity: number;
+  sourceQuantityBefore: number;
+  sourceQuantityAfter: number;
+  targetQuantityAfter: number | null;
+  actorUserId: string | null;
+  actorUsername: string | null;
+  actorRole: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+};
+
 const mapBatchRow = (row: any): ReceiptBatch => ({
   id: row.id,
   batchShortCode: row.batch_short_code,
@@ -180,6 +206,32 @@ const mapBatchConsumptionRow = (row: any): ReceiptBatchConsumptionEvent => ({
   createdAt: row.created_at
 });
 
+const mapBatchCorrectionRow = (row: any): ReceiptBatchCorrection => ({
+  id: row.id,
+  sourceBatchId: row.source_batch_id,
+  targetBatchId: row.target_batch_id ?? null,
+  sourceBatchCode: row.source_batch_code,
+  targetBatchCode: row.target_batch_code ?? null,
+  sourceCompanyId: row.source_company_id,
+  sourceCompanyName: row.source_company_name ?? null,
+  sourceCompanyCode: row.source_company_code ?? null,
+  targetCompanyId: row.target_company_id,
+  targetCompanyName: row.target_company_name ?? null,
+  targetCompanyCode: row.target_company_code ?? null,
+  mode: row.mode,
+  reason: row.reason,
+  movedQuantity: Number(row.moved_quantity),
+  sourceQuantityBefore: Number(row.source_quantity_before),
+  sourceQuantityAfter: Number(row.source_quantity_after),
+  targetQuantityAfter:
+    row.target_quantity_after == null ? null : Number(row.target_quantity_after),
+  actorUserId: row.actor_user_id ?? null,
+  actorUsername: row.actor_username ?? null,
+  actorRole: row.actor_role ?? null,
+  metadata: row.metadata ?? {},
+  createdAt: row.created_at
+});
+
 const batchSelect = `
   SELECT
     rb.*, c.name AS company_name, c.code AS company_code,
@@ -198,6 +250,94 @@ const batchSelect = `
 const getBatchByIdWithClient = async (client: PoolClient, id: string): Promise<ReceiptBatch | null> => {
   const result = await client.query(`${batchSelect} WHERE rb.id = $1 LIMIT 1;`, [id]);
   return result.rows[0] ? mapBatchRow(result.rows[0]) : null;
+};
+
+const computeBatchTotals = (quantity: number, unitAmountUsd: number, financialMode: ReceiptFinancialMode) => {
+  const totalTheoreticalUsd = Number((quantity * unitAmountUsd).toFixed(2));
+  return {
+    totalTheoreticalUsd,
+    totalPaidUsd: financialMode === 'EXONERATED' ? 0 : totalTheoreticalUsd,
+    totalExoneratedUsd: financialMode === 'EXONERATED' ? totalTheoreticalUsd : 0
+  };
+};
+
+const createBatchShell = async (
+  client: PoolClient,
+  input: {
+    companyId: string;
+    quantity: number;
+    taxType: ReceiptTaxType;
+    provenance?: string | null;
+    destination?: string | null;
+    financialMode: ReceiptFinancialMode;
+    unitAmountUsd: number;
+    paymentReference?: string | null;
+    note?: string | null;
+    issuedByUserId?: string | null;
+    issuedByUsername?: string | null;
+    issuedByRole?: string | null;
+    channel?: ReceiptChannel;
+  }
+): Promise<ReceiptBatch> => {
+  const batchId = crypto.randomUUID();
+  const batchShortCode = await nextUniqueBatchShortCode(client);
+  const batchQrPayload = buildBatchQrPayload(batchId, batchShortCode);
+  const totals = computeBatchTotals(
+    input.quantity,
+    input.unitAmountUsd,
+    input.financialMode
+  );
+
+  const batchResult = await client.query(
+    `
+      INSERT INTO receipt_batches (
+        id,
+        company_id,
+        quantity,
+        tax_type,
+        provenance,
+        destination,
+        financial_mode,
+        unit_amount_usd,
+        total_theoretical_usd,
+        total_paid_usd,
+        total_exonerated_usd,
+        payment_reference,
+        note,
+        issued_by_user_id,
+        issued_by_username,
+        issued_by_role,
+        batch_short_code,
+        batch_qr_payload,
+        channel
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      RETURNING *;
+    `,
+    [
+      batchId,
+      input.companyId,
+      input.quantity,
+      input.taxType,
+      input.provenance ?? null,
+      input.destination ?? null,
+      input.financialMode,
+      input.unitAmountUsd,
+      totals.totalTheoreticalUsd,
+      totals.totalPaidUsd,
+      totals.totalExoneratedUsd,
+      input.paymentReference ?? null,
+      input.note ?? null,
+      input.issuedByUserId ?? null,
+      input.issuedByUsername ?? null,
+      input.issuedByRole ?? null,
+      batchShortCode,
+      batchQrPayload,
+      input.channel ?? 'COMPANY_BATCH'
+    ]
+  );
+
+  return mapBatchRow(batchResult.rows[0]);
 };
 
 export const ensureReceiptTables = async (): Promise<void> => {
@@ -287,6 +427,27 @@ export const ensureReceiptTables = async (): Promise<void> => {
     );
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS receipt_batch_corrections (
+      id UUID PRIMARY KEY,
+      source_batch_id UUID NOT NULL REFERENCES receipt_batches(id) ON DELETE CASCADE,
+      target_batch_id UUID REFERENCES receipt_batches(id) ON DELETE SET NULL,
+      source_company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+      target_company_id UUID NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+      mode VARCHAR(32) NOT NULL CHECK (mode IN ('TRANSFER_ALL', 'MOVE_REMAINING')),
+      reason VARCHAR(512) NOT NULL,
+      moved_quantity INTEGER NOT NULL CHECK (moved_quantity > 0),
+      source_quantity_before INTEGER NOT NULL CHECK (source_quantity_before > 0),
+      source_quantity_after INTEGER NOT NULL CHECK (source_quantity_after >= 0),
+      target_quantity_after INTEGER CHECK (target_quantity_after >= 0),
+      actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      actor_username VARCHAR(64),
+      actor_role VARCHAR(64),
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
   await pool.query(`ALTER TABLE receipt_batches ADD COLUMN IF NOT EXISTS batch_short_code VARCHAR(32);`);
   await pool.query(`ALTER TABLE receipt_batches ADD COLUMN IF NOT EXISTS batch_qr_payload TEXT;`);
   await pool.query(`
@@ -309,6 +470,8 @@ export const ensureReceiptTables = async (): Promise<void> => {
   `);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS receipt_batches_short_code_key ON receipt_batches(batch_short_code);`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS receipt_batch_consumption_device_local_idx ON receipt_batch_consumption_events(source_device_id, local_event_id) WHERE source_device_id IS NOT NULL AND local_event_id IS NOT NULL;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS receipt_batch_corrections_source_idx ON receipt_batch_corrections(source_batch_id, created_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS receipt_batch_corrections_target_idx ON receipt_batch_corrections(target_batch_id, created_at DESC);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS receipt_batches_company_idx ON receipt_batches(company_id, created_at DESC);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS receipt_batches_updated_idx ON receipt_batches(updated_at DESC);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS receipts_batch_idx ON receipts(batch_id, sequence_no);`);
@@ -593,66 +756,10 @@ export const createReceiptBatch = async (input: {
   issuedByRole?: string | null;
   channel?: ReceiptChannel;
 }): Promise<{ batch: ReceiptBatch; receipts: Receipt[] }> => {
-  const totalTheoreticalUsd = Number((input.unitAmountUsd * input.quantity).toFixed(2));
-  const totalPaidUsd = input.financialMode === 'EXONERATED' ? 0 : totalTheoreticalUsd;
-  const totalExoneratedUsd = input.financialMode === 'EXONERATED' ? totalTheoreticalUsd : 0;
-  const batchId = crypto.randomUUID();
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    const batchShortCode = await nextUniqueBatchShortCode(client);
-    const batchQrPayload = buildBatchQrPayload(batchId, batchShortCode);
-
-    const batchResult = await client.query(
-      `
-        INSERT INTO receipt_batches (
-          id,
-          company_id,
-          quantity,
-          tax_type,
-          provenance,
-          destination,
-          financial_mode,
-          unit_amount_usd,
-          total_theoretical_usd,
-          total_paid_usd,
-          total_exonerated_usd,
-          payment_reference,
-          note,
-          issued_by_user_id,
-          issued_by_username,
-          issued_by_role,
-          batch_short_code,
-          batch_qr_payload,
-          channel
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-        RETURNING *;
-      `,
-      [
-        batchId,
-        input.companyId,
-        input.quantity,
-        input.taxType,
-        input.provenance ?? null,
-        input.destination ?? null,
-        input.financialMode,
-        input.unitAmountUsd,
-        totalTheoreticalUsd,
-        totalPaidUsd,
-        totalExoneratedUsd,
-        input.paymentReference ?? null,
-        input.note ?? null,
-        input.issuedByUserId ?? null,
-        input.issuedByUsername ?? null,
-        input.issuedByRole ?? null,
-        batchShortCode,
-        batchQrPayload,
-        input.channel ?? 'COMPANY_BATCH'
-      ]
-    );
+    const batch = await createBatchShell(client, input);
 
     const receipts: Receipt[] = [];
     for (let index = 0; index < input.quantity; index += 1) {
@@ -680,7 +787,7 @@ export const createReceiptBatch = async (input: {
         `,
         [
           crypto.randomUUID(),
-          batchId,
+          batch.id,
           input.companyId,
           shortCode,
           index + 1,
@@ -714,7 +821,7 @@ export const createReceiptBatch = async (input: {
         [
           crypto.randomUUID(),
           receipt.id,
-          batchId,
+          batch.id,
           input.issuedByUserId ?? null,
           input.issuedByUsername ?? null,
           input.issuedByRole ?? null,
@@ -729,7 +836,7 @@ export const createReceiptBatch = async (input: {
 
     await client.query('COMMIT');
     return {
-      batch: mapBatchRow(batchResult.rows[0]),
+      batch,
       receipts
     };
   } catch (error) {
@@ -812,6 +919,313 @@ export const listReceiptBatches = async (filters: {
 export const getReceiptBatch = async (id: string): Promise<ReceiptBatch | null> => {
   const result = await pool.query(`${batchSelect} WHERE rb.id = $1 LIMIT 1;`, [id]);
   return result.rows[0] ? mapBatchRow(result.rows[0]) : null;
+};
+
+export const listBatchCorrections = async (batchId: string): Promise<ReceiptBatchCorrection[]> => {
+  const result = await pool.query(
+    `
+      SELECT
+        c.*,
+        sb.batch_short_code AS source_batch_code,
+        tb.batch_short_code AS target_batch_code,
+        sc.name AS source_company_name,
+        sc.code AS source_company_code,
+        tc.name AS target_company_name,
+        tc.code AS target_company_code
+      FROM receipt_batch_corrections c
+      INNER JOIN receipt_batches sb ON sb.id = c.source_batch_id
+      LEFT JOIN receipt_batches tb ON tb.id = c.target_batch_id
+      INNER JOIN companies sc ON sc.id = c.source_company_id
+      INNER JOIN companies tc ON tc.id = c.target_company_id
+      WHERE c.source_batch_id = $1 OR c.target_batch_id = $1
+      ORDER BY c.created_at DESC;
+    `,
+    [batchId]
+  );
+
+  return result.rows.map(mapBatchCorrectionRow);
+};
+
+export const correctReceiptBatchCompany = async (input: {
+  batchId: string;
+  targetCompanyId: string;
+  mode: ReceiptBatchCorrectionMode;
+  reason: string;
+  actorUserId?: string | null;
+  actorUsername?: string | null;
+  actorRole?: string | null;
+}): Promise<{
+  correction: ReceiptBatchCorrection;
+  sourceBatch: ReceiptBatch;
+  targetBatch: ReceiptBatch | null;
+}> => {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const sourceBatch = await getBatchByIdWithClient(client, input.batchId);
+    if (!sourceBatch) {
+      throw new AppError('Receipt batch not found', 404, 'RECEIPT_BATCH_NOT_FOUND');
+    }
+
+    const lockResult = await client.query(
+      `
+        SELECT
+          id,
+          status
+        FROM receipts
+        WHERE batch_id = $1
+        FOR UPDATE;
+      `,
+      [input.batchId]
+    );
+
+    const consumedCount = lockResult.rows.filter((row) => row.status === 'CONSUMED').length;
+    const issuedCount = lockResult.rows.filter((row) => row.status === 'ISSUED').length;
+
+    if (sourceBatch.companyId === input.targetCompanyId) {
+      throw new AppError(
+        'Target company must be different from source company',
+        409,
+        'RECEIPT_BATCH_CORRECTION_SAME_COMPANY'
+      );
+    }
+
+    if (issuedCount === 0) {
+      throw new AppError(
+        'No remaining receipts are available for correction',
+        409,
+        'RECEIPT_BATCH_CORRECTION_NOTHING_TO_MOVE'
+      );
+    }
+
+    if (input.mode === 'TRANSFER_ALL' && consumedCount > 0) {
+      throw new AppError(
+        'Only untouched batches can be fully transferred',
+        409,
+        'RECEIPT_BATCH_CORRECTION_TRANSFER_BLOCKED'
+      );
+    }
+
+    if (input.mode === 'MOVE_REMAINING' && consumedCount === 0) {
+      throw new AppError(
+        'MOVE_REMAINING requires a partially consumed batch',
+        409,
+        'RECEIPT_BATCH_CORRECTION_MOVE_REMAINING_INVALID'
+      );
+    }
+
+    const correctionId = crypto.randomUUID();
+    const actorUserId = await resolveExistingUserId(client, input.actorUserId ?? null);
+    const sourceQuantityBefore = sourceBatch.quantity;
+    let updatedSourceBatch: ReceiptBatch | null = null;
+    let targetBatch: ReceiptBatch | null = null;
+
+    if (input.mode === 'TRANSFER_ALL') {
+      await client.query(
+        `
+          UPDATE receipt_batches
+          SET company_id = $2,
+              updated_at = NOW()
+          WHERE id = $1;
+        `,
+        [sourceBatch.id, input.targetCompanyId]
+      );
+
+      await client.query(
+        `
+          UPDATE receipts
+          SET company_id = $2
+          WHERE batch_id = $1;
+        `,
+        [sourceBatch.id, input.targetCompanyId]
+      );
+
+      await client.query(
+        `
+          INSERT INTO receipt_batch_corrections (
+            id,
+            source_batch_id,
+            target_batch_id,
+            source_company_id,
+            target_company_id,
+            mode,
+            reason,
+            moved_quantity,
+            source_quantity_before,
+            source_quantity_after,
+            target_quantity_after,
+            actor_user_id,
+            actor_username,
+            actor_role,
+            metadata
+          )
+          VALUES ($1,$2,NULL,$3,$4,$5,$6,$7,$8,$9,NULL,$10,$11,$12,$13::jsonb);
+        `,
+        [
+          correctionId,
+          sourceBatch.id,
+          sourceBatch.companyId,
+          input.targetCompanyId,
+          input.mode,
+          input.reason,
+          issuedCount,
+          sourceQuantityBefore,
+          sourceQuantityBefore,
+          actorUserId,
+          input.actorUsername ?? null,
+          input.actorRole ?? null,
+          JSON.stringify({
+            consumed_count: consumedCount,
+            moved_receipt_count: issuedCount
+          })
+        ]
+      );
+
+      updatedSourceBatch = await getBatchByIdWithClient(client, sourceBatch.id);
+    } else {
+      const sourceTotals = computeBatchTotals(
+        consumedCount,
+        sourceBatch.unitAmountUsd,
+        sourceBatch.financialMode
+      );
+
+      targetBatch = await createBatchShell(client, {
+        companyId: input.targetCompanyId,
+        quantity: issuedCount,
+        taxType: sourceBatch.taxType,
+        provenance: sourceBatch.provenance,
+        destination: sourceBatch.destination,
+        financialMode: sourceBatch.financialMode,
+        unitAmountUsd: sourceBatch.unitAmountUsd,
+        paymentReference: sourceBatch.paymentReference,
+        note: sourceBatch.note,
+        issuedByUserId: sourceBatch.issuedByUserId,
+        issuedByUsername: sourceBatch.issuedByUsername,
+        issuedByRole: sourceBatch.issuedByRole,
+        channel: sourceBatch.channel
+      });
+
+      await client.query(
+        `
+          UPDATE receipt_batches
+          SET quantity = $2,
+              total_theoretical_usd = $3,
+              total_paid_usd = $4,
+              total_exonerated_usd = $5,
+              updated_at = NOW()
+          WHERE id = $1;
+        `,
+        [
+          sourceBatch.id,
+          consumedCount,
+          sourceTotals.totalTheoreticalUsd,
+          sourceTotals.totalPaidUsd,
+          sourceTotals.totalExoneratedUsd
+        ]
+      );
+
+      await client.query(
+        `
+          UPDATE receipts
+          SET batch_id = $2,
+              company_id = $3
+          WHERE batch_id = $1 AND status = 'ISSUED';
+        `,
+        [sourceBatch.id, targetBatch.id, input.targetCompanyId]
+      );
+
+      await client.query(
+        `
+          INSERT INTO receipt_batch_corrections (
+            id,
+            source_batch_id,
+            target_batch_id,
+            source_company_id,
+            target_company_id,
+            mode,
+            reason,
+            moved_quantity,
+            source_quantity_before,
+            source_quantity_after,
+            target_quantity_after,
+            actor_user_id,
+            actor_username,
+            actor_role,
+            metadata
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb);
+        `,
+        [
+          correctionId,
+          sourceBatch.id,
+          targetBatch.id,
+          sourceBatch.companyId,
+          input.targetCompanyId,
+          input.mode,
+          input.reason,
+          issuedCount,
+          sourceQuantityBefore,
+          consumedCount,
+          issuedCount,
+          actorUserId,
+          input.actorUsername ?? null,
+          input.actorRole ?? null,
+          JSON.stringify({
+            consumed_count: consumedCount,
+            moved_receipt_count: issuedCount,
+            target_batch_code: targetBatch.batchShortCode
+          })
+        ]
+      );
+
+      updatedSourceBatch = await getBatchByIdWithClient(client, sourceBatch.id);
+      targetBatch = await getBatchByIdWithClient(client, targetBatch.id);
+    }
+
+    const correctionResult = await client.query(
+      `
+        SELECT
+          c.*,
+          sb.batch_short_code AS source_batch_code,
+          tb.batch_short_code AS target_batch_code,
+          sc.name AS source_company_name,
+          sc.code AS source_company_code,
+          tc.name AS target_company_name,
+          tc.code AS target_company_code
+        FROM receipt_batch_corrections c
+        INNER JOIN receipt_batches sb ON sb.id = c.source_batch_id
+        LEFT JOIN receipt_batches tb ON tb.id = c.target_batch_id
+        INNER JOIN companies sc ON sc.id = c.source_company_id
+        INNER JOIN companies tc ON tc.id = c.target_company_id
+        WHERE c.id = $1
+        LIMIT 1;
+      `,
+      [correctionId]
+    );
+
+    await client.query('COMMIT');
+
+    if (!updatedSourceBatch || !correctionResult.rows[0]) {
+      throw new AppError(
+        'Receipt batch correction failed',
+        500,
+        'RECEIPT_BATCH_CORRECTION_FAILED'
+      );
+    }
+
+    return {
+      correction: mapBatchCorrectionRow(correctionResult.rows[0]),
+      sourceBatch: updatedSourceBatch,
+      targetBatch
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 export const listBatchReceipts = async (
