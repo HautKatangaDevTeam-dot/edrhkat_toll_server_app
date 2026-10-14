@@ -106,6 +106,11 @@ export const ensureTollTransactionsTable = async (): Promise<void> => {
     );
   `);
   await pool.query(`ALTER TABLE toll_transactions ADD COLUMN IF NOT EXISTS company_code VARCHAR(64);`);
+  await pool.query(`
+    ALTER TABLE toll_transactions
+      DROP CONSTRAINT IF EXISTS toll_transactions_post_check,
+      ADD CONSTRAINT toll_transactions_post_check CHECK (post_id IN (${allowedPosts}));
+  `);
   await pool.query(`ALTER TABLE toll_transactions ADD COLUMN IF NOT EXISTS company_name VARCHAR(255);`);
   await pool.query(`ALTER TABLE toll_transactions ADD COLUMN IF NOT EXISTS amount_due NUMERIC(18,2);`);
   await pool.query(`ALTER TABLE toll_transactions ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(18,2);`);

@@ -11,6 +11,8 @@ export const POSTS = [
   'KABOLA',
   'KYANDWE',
   'SASE',
+  '45 KM',
+  'MIRINGI',
   'DIRECTION_GENERALE'
 ] as const;
 
